@@ -7,8 +7,11 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.math.trajectory.TrapezoidProfile.Constraints;
 import edu.wpi.first.math.trajectory.TrapezoidProfile.State;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.units.Unit;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Distance;
 import edu.wpi.first.units.measure.Voltage;
 import edu.wpi.first.wpilibj.RobotState;
 import edu.wpi.first.wpilibj.sysid.SysIdRoutineLog;
@@ -21,6 +24,9 @@ import frc.robot.LoggedTunableNumber;
 
 import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.DegreesPerSecond;
+import static edu.wpi.first.units.Units.Inch;
+import static edu.wpi.first.units.Units.Inches;
+import static edu.wpi.first.units.Units.Meters;
 import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
@@ -42,21 +48,23 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.config.ClosedLoopConfig;
 import com.revrobotics.spark.config.EncoderConfig;
 import com.revrobotics.spark.config.SparkMaxConfig;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.hardware.TalonFX;
 
-public class Arm extends SubsystemBase{
-    private SparkMax motor;
+public class Elevator extends SubsystemBase{
+    private TalonFX motor;
     private SysIdRoutine routine;
 
     private ArmFeedforward armFeedforward;
 
-    private LoggedTunableNumber armKs = new LoggedTunableNumber("armKs", 0.03);
-    private LoggedTunableNumber armKg = new LoggedTunableNumber("armKg", 0.23);
-    private LoggedTunableNumber armKv = new LoggedTunableNumber("armKv", 0.8);
-    private LoggedTunableNumber armP = new LoggedTunableNumber("armP", 5);
-    private LoggedTunableNumber armD = new LoggedTunableNumber("armd", 0.5);
+    private LoggedTunableNumber armKs = new LoggedTunableNumber("armKs", 0.0);
+    private LoggedTunableNumber armKg = new LoggedTunableNumber("armKg", 0.0);
+    private LoggedTunableNumber armKv = new LoggedTunableNumber("armKv", 0.0);
+    private LoggedTunableNumber armP = new LoggedTunableNumber("armP", 0.0);
+    private LoggedTunableNumber armD = new LoggedTunableNumber("armd", 0.0);
 
-    private LoggedTunableNumber maxV = new LoggedTunableNumber("maxV", 3.5);
-    private LoggedTunableNumber maxA = new LoggedTunableNumber("maxA", 10);
+    private LoggedTunableNumber maxV = new LoggedTunableNumber("maxV", 0.0);
+    private LoggedTunableNumber maxA = new LoggedTunableNumber("maxA", 0.0);
 
     private State currentState = new State();
     private State targetState = new State();
@@ -65,26 +73,10 @@ public class Arm extends SubsystemBase{
 
     private CommandXboxController controller;
 
-    public Arm(CommandXboxController controller) {
+    public Elevator(CommandXboxController controller) {
         this.controller = controller;
 
         armFeedforward = new ArmFeedforward(0, 0, 0);
-
-        motor = new SparkMax(31, MotorType.kBrushless);
-
-        SparkMaxConfig motorConfig = new SparkMaxConfig();
-        motorConfig.apply(
-            new EncoderConfig()
-                .positionConversionFactor(1.0/25)
-                .velocityConversionFactor(1.0/25/60)
-        ).apply(
-            new ClosedLoopConfig()
-                .pid(0, 0, 0)
-        );
-
-        motor.configure(motorConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
-
-        motor.getEncoder().setPosition(-0.25);
 
         SysIdRoutine.Mechanism sysIdMech = new SysIdRoutine.Mechanism(
             this::setVoltage,
@@ -93,7 +85,7 @@ public class Arm extends SubsystemBase{
         );
 
         routine = new SysIdRoutine(new Config(Volts.of(1).per(Second), Volts.of(1), Seconds.of(3)), sysIdMech);
-        currentState.position = getPosition().in(Rotations);
+        currentState.position = getPosition().in(Inches);
     }
 
     private void motorSysIdLog(SysIdRoutineLog log) {
@@ -107,12 +99,13 @@ public class Arm extends SubsystemBase{
         motor.setVoltage(voltage);
     }
 
-    public void setTargetPosition(Rotation2d position) {
-        targetPosition = Rotation2d.fromDegrees(MathUtil.clamp(position.getDegrees(), -90, 90));
+    public void setTargetPosition(Distance position) {
+        targetPosition = Inches.of(MathUtil.clamp(position.in(Inches), -90, 90));
     }
 
-    public Angle getPosition() {
-        return Radians.of(MathUtil.angleModulus(Rotations.of(motor.getEncoder().getPosition()).in(Radians)));
+    public Distance getPosition() {
+        return Meters.of((2 * Math.PI * WHEEL_RADIUS.in(Meters) * motor.getPosition.in(Rotations)) / GEARING);
+        // return Inches.of(MathUtil.angleModulus(Inches.of(motor.getEncoder().getPosition()).in(Inches)));
     }
 
     public AngularVelocity getVelocity() {
@@ -127,7 +120,7 @@ public class Arm extends SubsystemBase{
         return routine.dynamic(direction);
     }
 
-    private Rotation2d targetPosition = new Rotation2d();
+    private Distance targetPosition = getPosition();
 
     @Override
     public void periodic() {        
